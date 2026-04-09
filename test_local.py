@@ -4,7 +4,7 @@ import argparse
 import time
 
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
+from transformers import VoxtralForConditionalGeneration, VoxtralProcessor
 
 
 MODEL_ID = "mistralai/Voxtral-Mini-3B-2507"
@@ -22,10 +22,10 @@ def load_model(device: str = "auto"):
     else:
         dtype = torch.float32
 
-    processor = AutoProcessor.from_pretrained(MODEL_ID)
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    processor = VoxtralProcessor.from_pretrained(MODEL_ID)
+    model = VoxtralForConditionalGeneration.from_pretrained(
         MODEL_ID,
-        torch_dtype=dtype,
+        dtype=dtype,
         device_map=device,
     )
 
