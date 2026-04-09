@@ -35,7 +35,7 @@ def load_model(device: str = "auto"):
     return model, processor, load_time
 
 
-def transcribe(model, processor, audio_path: str) -> dict:
+def transcribe(model, processor, audio_path: str, language: str = "en") -> dict:
     """Transcribe a single audio file with detailed latency breakdown."""
     import librosa
 
@@ -46,9 +46,15 @@ def transcribe(model, processor, audio_path: str) -> dict:
 
     audio_duration = len(audio) / sr
 
-    # 2. Preprocess
+    # 2. Preprocess via apply_transcription_request
     t1 = time.time()
-    inputs = processor(audio, sampling_rate=16000, return_tensors="pt")
+    inputs = processor.apply_transcription_request(
+        language=language,
+        audio=audio,
+        model_id=MODEL_ID,
+        sampling_rate=16000,
+        return_tensors="pt",
+    )
     inputs = inputs.to(model.device)
     t_preprocess = time.time() - t1
 
@@ -98,6 +104,7 @@ def print_result(result: dict):
 def main():
     parser = argparse.ArgumentParser(description="Test Voxtral Mini STT locally")
     parser.add_argument("--audio", required=True, help="Path to audio file")
+    parser.add_argument("--language", default="en", help="Language code (en, fr, etc.)")
     parser.add_argument("--device", default="auto", help="Device: auto, cpu, cuda, mps")
     parser.add_argument(
         "--warmup", action="store_true",
@@ -115,7 +122,10 @@ def main():
         import numpy as np
         print("\nWarmup run...")
         dummy = np.zeros(16000, dtype=np.float32)  # 1s silence
-        dummy_inputs = processor(dummy, sampling_rate=16000, return_tensors="pt")
+        dummy_inputs = processor.apply_transcription_request(
+            language="en", audio=dummy, model_id=MODEL_ID,
+            sampling_rate=16000, return_tensors="pt",
+        )
         dummy_inputs = dummy_inputs.to(model.device)
         with torch.no_grad():
             model.generate(**dummy_inputs, max_new_tokens=10)
@@ -125,7 +135,7 @@ def main():
     for i in range(args.repeat):
         if args.repeat > 1:
             print(f"\nRun {i+1}/{args.repeat}")
-        result = transcribe(model, processor, args.audio)
+        result = transcribe(model, processor, args.audio, language=args.language)
         results.append(result)
         print_result(result)
 

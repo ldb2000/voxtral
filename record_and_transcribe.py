@@ -62,6 +62,7 @@ def main():
         "--duration", type=float, default=None,
         help="Recording duration in seconds (omit to record until Enter)",
     )
+    parser.add_argument("--language", default="en", help="Language code (en, fr, etc.)")
     parser.add_argument("--device", default="auto", help="Device: auto, cpu, cuda, mps")
     parser.add_argument("--save", default=None, help="Save recording to this WAV path")
     args = parser.parse_args()
@@ -88,7 +89,7 @@ def main():
 
     # Transcribe and show latency
     t_start = time.time()
-    result = transcribe(model, processor, wav_path)
+    result = transcribe(model, processor, wav_path, language=args.language)
     e2e = time.time() - t_start
 
     print_result(result)
