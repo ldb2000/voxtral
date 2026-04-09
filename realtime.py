@@ -2,11 +2,11 @@
 
 import argparse
 import io
+import queue
 import sys
 import tempfile
 import threading
 import time
-from collections import deque
 
 import numpy as np
 import sounddevice as sd
@@ -126,25 +126,31 @@ def run_realtime(
     max_speech_chunks = int(max_speech_s / chunk_duration)
 
     segment_count = 0
-    transcribing = False
+    segment_queue = queue.Queue()
 
     print(f"\nListening... (silence threshold: {silence_threshold})")
     print(f"  Min speech: {min_speech_s}s | Max segment: {max_speech_s}s | Silence gap: {silence_after_s}s")
     print(f"  Press Ctrl+C to stop.\n")
 
-    def process_segment(audio_data, seg_num):
-        nonlocal transcribing
-        transcribing = True
-        audio = np.concatenate(audio_data)
-        duration = len(audio) / SAMPLE_RATE
-        text, latency = stt.transcribe(audio)
-        if text:
-            # Clear line and print result
-            sys.stdout.write(f"\r\033[K")
-            sys.stdout.write(f"  [{seg_num}] ({duration:.1f}s → {latency:.0f}ms) {text}\n")
-            sys.stdout.write(f"\r\033[K  🎤 Listening...")
-            sys.stdout.flush()
-        transcribing = False
+    def transcription_worker():
+        """Worker thread: drains queue and transcribes segments one by one."""
+        while True:
+            item = segment_queue.get()
+            if item is None:  # poison pill
+                break
+            seg_data, seg_num = item
+            audio = np.concatenate(seg_data)
+            duration = len(audio) / SAMPLE_RATE
+            text, latency = stt.transcribe(audio)
+            if text:
+                sys.stdout.write(f"\r\033[K")
+                sys.stdout.write(f"  [{seg_num}] ({duration:.1f}s -> {latency:.0f}ms) {text}\n")
+                sys.stdout.write(f"\r\033[K  Listening...")
+                sys.stdout.flush()
+            segment_queue.task_done()
+
+    worker = threading.Thread(target=transcription_worker, daemon=True)
+    worker.start()
 
     def audio_callback(indata, frames, time_info, status):
         nonlocal is_speaking, silence_counter, speech_buffer, segment_count
@@ -164,20 +170,14 @@ def run_realtime(
             silence_counter += 1
 
             if silence_counter >= silence_chunks or len(speech_buffer) >= max_speech_chunks:
-                if len(speech_buffer) >= min_speech_chunks and not transcribing:
+                if len(speech_buffer) >= min_speech_chunks:
                     segment_count += 1
-                    seg_data = list(speech_buffer)
-                    seg_num = segment_count
-                    # Transcribe in a thread to not block audio
-                    t = threading.Thread(
-                        target=process_segment, args=(seg_data, seg_num)
-                    )
-                    t.start()
+                    segment_queue.put((list(speech_buffer), segment_count))
                 speech_buffer = []
                 is_speaking = False
                 silence_counter = 0
 
-    sys.stdout.write("  🎤 Listening...")
+    sys.stdout.write("  Listening...")
     sys.stdout.flush()
 
     with sd.InputStream(
@@ -191,7 +191,10 @@ def run_realtime(
             while True:
                 time.sleep(0.1)
         except KeyboardInterrupt:
-            print("\n\nStopped.")
+            print("\n\nStopping...")
+            segment_queue.put(None)
+            worker.join()
+            print("Done.")
 
 
 def main():
