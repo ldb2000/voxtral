@@ -39,21 +39,21 @@ def transcribe(model, processor, audio_path: str, language: str = "en") -> dict:
     """Transcribe a single audio file with detailed latency breakdown."""
     import librosa
 
-    # 1. Load audio
+    # 1. Get audio duration
     t0 = time.time()
     audio, sr = librosa.load(audio_path, sr=16000)
     t_load = time.time() - t0
-
     audio_duration = len(audio) / sr
 
-    # 2. Preprocess via apply_transcription_request
+    # 2. Preprocess — pass file path, processor handles loading internally
     t1 = time.time()
     inputs = processor.apply_transcription_request(
         language=language,
-        audio=audio,
+        audio=audio_path,
         model_id=MODEL_ID,
-        sampling_rate=16000,
         return_tensors="pt",
+        tokenize=True,
+        return_dict=True,
     )
     inputs = inputs.to(model.device)
     t_preprocess = time.time() - t1
@@ -119,13 +119,17 @@ def main():
     model, processor, _ = load_model(args.device)
 
     if args.warmup:
+        import tempfile
         import numpy as np
+        import soundfile as sf
         print("\nWarmup run...")
         dummy = np.zeros(16000, dtype=np.float32)  # 1s silence
-        dummy_inputs = processor.apply_transcription_request(
-            language="en", audio=dummy, model_id=MODEL_ID,
-            sampling_rate=16000, return_tensors="pt",
-        )
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            sf.write(f.name, dummy, 16000)
+            dummy_inputs = processor.apply_transcription_request(
+                language="en", audio=f.name, model_id=MODEL_ID,
+                return_tensors="pt", tokenize=True, return_dict=True,
+            )
         dummy_inputs = dummy_inputs.to(model.device)
         with torch.no_grad():
             model.generate(**dummy_inputs, max_new_tokens=10)
