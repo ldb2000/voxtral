@@ -69,27 +69,21 @@ def run_whisper(audio_path: str, language: str, device: str, model_size: str) ->
     model = whisper.load_model(model_size, device=device)
     t_load = time.time() - t0
 
-    # Preprocess
+    # Transcribe (handles mel channels automatically for all model sizes)
     t1 = time.time()
-    audio = whisper.load_audio(audio_path)
-    audio = whisper.pad_or_trim(audio)
-    mel = whisper.log_mel_spectrogram(audio).to(model.device)
-    t_preprocess = time.time() - t1
-
-    # Inference
-    t2 = time.time()
-    options = whisper.DecodingOptions(language=language, without_timestamps=True)
-    result = whisper.decode(model, mel, options)
-    t_inference = time.time() - t2
+    result = model.transcribe(
+        audio_path, language=language, without_timestamps=True, fp16=False,
+    )
+    t_total = time.time() - t1
 
     return {
         "model": f"Whisper {model_size}",
-        "transcription": result.text,
+        "transcription": result["text"],
         "model_load_ms": round(t_load * 1000, 1),
-        "preprocess_ms": round(t_preprocess * 1000, 1),
-        "inference_ms": round(t_inference * 1000, 1),
+        "preprocess_ms": 0,
+        "inference_ms": round(t_total * 1000, 1),
         "decode_ms": 0,
-        "total_ms": round((t_preprocess + t_inference) * 1000, 1),
+        "total_ms": round(t_total * 1000, 1),
     }
 
 
