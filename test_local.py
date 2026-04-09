@@ -52,8 +52,8 @@ def transcribe(model, processor, audio_path: str, language: str = "en") -> dict:
         audio=audio_path,
         model_id=MODEL_ID,
         return_tensors="pt",
-        tokenize=True,
-        return_dict=True,
+
+
     )
     inputs = inputs.to(model.device)
     t_preprocess = time.time() - t1
